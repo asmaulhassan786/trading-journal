@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EdgeJournal">
+<meta name="theme-color" content="#0B0F17">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>EdgeJournal — Trade · Track · Improve</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzBEMUIyQSIvPgogIDxyZWN0IHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgcng9IjYiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwQzg5NiIgc3Ryb2tlLXdpZHRoPSIxIi8+CiAgPHBvbHlsaW5lIHBvaW50cz0iNCwyNCA5LDE3IDE0LDIwIDIxLDEwIDI4LDQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwQzg5NiIgc3Ryb2tlLXdpZHRoPSIyLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxjaXJjbGUgY3g9IjI4IiBjeT0iNCIgcj0iMi41IiBmaWxsPSIjMDBDODk2Ii8+CiAgPGNpcmNsZSBjeD0iNCIgY3k9IjI0IiByPSIxLjgiIGZpbGw9IiMwMEM4OTYiLz4KICA8bGluZSB4MT0iMyIgeTE9IjI3IiB4Mj0iMjkiIHkyPSIyNyIgc3Ryb2tlPSIjMDBDODk2IiBzdHJva2Utd2lkdGg9IjEiIHN0cm9rZS1vcGFjaXR5PSIwLjM1Ii8+Cjwvc3ZnPg==">
 <link rel="shortcut icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzBEMUIyQSIvPgogIDxyZWN0IHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgcng9IjYiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwQzg5NiIgc3Ryb2tlLXdpZHRoPSIxIi8+CiAgPHBvbHlsaW5lIHBvaW50cz0iNCwyNCA5LDE3IDE0LDIwIDIxLDEwIDI4LDQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwQzg5NiIgc3Ryb2tlLXdpZHRoPSIyLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxjaXJjbGUgY3g9IjI4IiBjeT0iNCIgcj0iMi41IiBmaWxsPSIjMDBDODk2Ii8+CiAgPGNpcmNsZSBjeD0iNCIgY3k9IjI0IiByPSIxLjgiIGZpbGw9IiMwMEM4OTYiLz4KICA8bGluZSB4MT0iMyIgeTE9IjI3IiB4Mj0iMjkiIHkyPSIyNyIgc3Ryb2tlPSIjMDBDODk2IiBzdHJva2Utd2lkdGg9IjEiIHN0cm9rZS1vcGFjaXR5PSIwLjM1Ii8+Cjwvc3ZnPg==">
@@ -21,6 +28,9 @@
   --radius:10px;--radius-sm:6px;
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;}
+/* PWA safe area — handles iPhone notch and home bar */
+.shell{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
+.sidebar{padding-bottom:env(safe-area-inset-bottom);}
 .shell{display:flex;height:100vh;overflow:hidden;}
 .sidebar{width:225px;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;}
 .main{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
@@ -2214,6 +2224,15 @@ async function loadMarketRegime(force = false) {
 document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
 document.getElementById('eq-date').value = new Date().toISOString().split('T')[0];
 loadAll();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW failed:', err));
+  });
+}
 </script>
 </body>
 </html>
