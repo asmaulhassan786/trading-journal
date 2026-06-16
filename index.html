@@ -422,7 +422,7 @@ select option{background:var(--card);}
         </div>
       </div>
       <!-- EQUITY CURVE — right after open positions -->
-      <div class="chart-card" style="margin-bottom:14px;"><div class="chart-card-title">Equity Curve</div><div style="position:relative;height:155px;"><canvas id="cEquity" role="img" aria-label="Equity curve">.</canvas></div></div>
+      <div class="chart-card" style="margin-bottom:14px;"><div class="chart-card-title">P&L Curve</div><div style="position:relative;height:155px;"><canvas id="cEquity" role="img" aria-label="P&L curve">.</canvas></div></div>
       <!-- WIN/LOSS + RISK STATS row after equity curve -->
       <div class="charts-2b" style="margin-bottom:14px;" id="postEquityRow">
         <div class="chart-card" style="margin-bottom:0">
@@ -1211,28 +1211,110 @@ function renderDistChart(closed) {
   const ctx = document.getElementById('cDist').getContext('2d');
   charts['di'] = new Chart(ctx, { type:'bar', data:{ labels:keys.map(k=>k+'%'), datasets:[{ data:keys.map(k=>bkts[k]), backgroundColor:'rgba(74,158,255,.65)', borderRadius:2, borderSkipped:false }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{color:'#64748B',font:{size:9}}, grid:{display:false} }, y:{ ticks:{color:'#64748B',font:{size:9},stepSize:1}, grid:{color:'rgba(255,255,255,.04)'} } } } });
 }
-function renderEquityCurveChart(closed) {
+// ── DAILY EQUITY CURVE — one point per calendar day, includes open + closed ──
+function renderEquityCurveChart(closedIgnored) {
   destroyC('ec');
-  let cum = 0;
-  const data = closed.map(t => { cum += pnl(t); return parseFloat(cum.toFixed(2)); });
-  const labels = closed.map(t => t.date);
+  const ft = getFiltered();
+  const allT = ft.filter(t => t.date); // need an open date to place on timeline
 
-  // Add a live "Now" point that includes unrealized P&L from open positions
-  const openTrades = trades.filter(t => !t.exit_price);
-  const totalUnreal = openTrades.reduce((a, t) => { const u = unrealizedPnl(t); return a + (u || 0); }, 0);
-  const hasLive = openTrades.some(t => livePrices[t.symbol]);
-  if (openTrades.length) {
-    data.push(parseFloat((cum + totalUnreal).toFixed(2)));
-    labels.push('Now' + (hasLive ? '' : ' (loading)'));
+  if (!allT.length) {
+    const ctx0 = document.getElementById('cEquity').getContext('2d');
+    charts['ec'] = new Chart(ctx0, { type:'line', data:{ labels:[], datasets:[{ data:[] }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} } });
+    return;
   }
 
-  const isPos = !data.length || data[data.length-1] >= 0;
-  const liveIdx = openTrades.length ? data.length - 1 : -1;
-  const pointRadii = data.map((_, i) => i === liveIdx ? 4 : 0);
-  const pointColors = data.map((_, i) => i === liveIdx ? '#4A9EFF' : (isPos ? '#00C896' : '#FF5C5C'));
+  // Build the date range: earliest open date -> today
+  const toDay = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+  const earliest = toDay(allT.reduce((min,t) => t.date < min ? t.date : min, allT[0].date));
+  const today = toDay(new Date());
+
+  const days = [];
+  for (let d = new Date(earliest); d <= today; d.setDate(d.getDate()+1)) {
+    days.push(toDay(d));
+  }
+
+  const fmt = d => d.toISOString().slice(0,10);
+  const isToday = d => fmt(d) === fmt(today);
+
+  const pnlData = [];   // P&L only — what the line plots and colors
+  const labels = [];
+
+  days.forEach(day => {
+    const dayStr = fmt(day);
+
+    // Realized P&L up to this day
+    let realized = 0;
+    allT.forEach(t => {
+      if (t.exit_price !== null && t.exit_price !== undefined && t.exit_date && t.exit_date <= dayStr) {
+        realized += pnl(t);
+      }
+    });
+
+    // Unrealized P&L (today only, using live price)
+    let unrealized = 0;
+    allT.forEach(t => {
+      const stillOpenOnDay = t.date <= dayStr && (!t.exit_date || t.exit_date > dayStr);
+      if (!stillOpenOnDay) return;
+      if (isToday(day)) {
+        const u = unrealizedPnl(t);
+        if (u !== null) unrealized += u;
+      }
+      // Past days: no historical price feed, so unrealized is omitted (not a stale guess).
+    });
+
+    pnlData.push(parseFloat((realized + unrealized).toFixed(2)));
+    labels.push(isToday(day) ? 'Today' : day.toLocaleDateString('en-US', {month:'short', day:'numeric'}));
+  });
+
+  // Color each line SEGMENT green/red based on whether P&L is rising or falling at that point —
+  // deposits are excluded entirely so adding capital never looks like a "gain".
+  const lastIdx = pnlData.length - 1;
+  const openCount = trades.filter(t => !t.exit_price).length;
+  const segColor = ctx2 => {
+    const v0 = pnlData[ctx2.p0DataIndex];
+    const v1 = pnlData[ctx2.p1DataIndex];
+    return v1 >= v0 ? '#00C896' : '#FF5C5C';
+  };
+  const pointColor = (_, i) => (i === lastIdx && openCount) ? '#4A9EFF' : (pnlData[i] >= 0 ? '#00C896' : '#FF5C5C');
+  const pointRadii = pnlData.map((_, i) => (i === lastIdx && openCount) ? 4 : 0);
+  const pointColors = pnlData.map((v, i) => pointColor(v, i));
+
+  const lastVal = pnlData[lastIdx] ?? 0;
+  const overallPos = lastVal >= 0;
 
   const ctx = document.getElementById('cEquity').getContext('2d');
-  charts['ec'] = new Chart(ctx, { type:'line', data:{ labels, datasets:[{ data, borderColor:isPos?'#00C896':'#FF5C5C', borderWidth:2, pointRadius:pointRadii, pointBackgroundColor:pointColors, pointBorderColor:pointColors, fill:true, backgroundColor:isPos?'rgba(0,200,150,.06)':'rgba(255,92,92,.06)', tension:.4, segment:{ borderDash: ctx2 => (liveIdx>0 && ctx2.p1DataIndex===liveIdx) ? [5,4] : undefined } }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{color:'#64748B',font:{size:9},maxTicksLimit:8}, grid:{color:'rgba(255,255,255,.03)'} }, y:{ ticks:{color:'#64748B',font:{size:9},callback:v=>'$'+v}, grid:{color:'rgba(255,255,255,.04)'} } } } });
+  charts['ec'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: pnlData,
+        borderColor: overallPos ? '#00C896' : '#FF5C5C',
+        segment: { borderColor: segColor },
+        borderWidth: 2,
+        pointRadius: pointRadii,
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointColors,
+        fill: true,
+        backgroundColor: ctxFill => {
+          const v = ctxFill.parsed ? ctxFill.parsed.y : lastVal;
+          return overallPos ? 'rgba(0,200,150,.06)' : 'rgba(255,92,92,.06)';
+        },
+        tension: .3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => (c.parsed.y >= 0 ? '+' : '') + '$' + c.parsed.y.toLocaleString() } }
+      },
+      scales: {
+        x: { ticks: { color:'#64748B', font:{size:9}, maxTicksLimit:8 }, grid: { color:'rgba(255,255,255,.03)' } },
+        y: { ticks: { color:'#64748B', font:{size:9}, callback: v => '$'+v }, grid: { color:'rgba(255,255,255,.04)' } }
+      }
+    }
+  });
 }
 function renderWinLossDonut(w, l, awp, alp) {
   // kept for backwards compat — actual rendering now done in renderWinLossSection
