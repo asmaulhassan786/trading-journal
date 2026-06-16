@@ -843,6 +843,10 @@ async function refreshLivePrices(showSpinner=false) {
     renderStatRows();
     renderStopExposure();
     renderWinLossSection();
+    if (document.getElementById('dashboard').classList.contains('active')) {
+      const ft = getFiltered();
+      renderEquityCurveChart(ft.filter(t => pnl(t) !== null));
+    }
     if (document.getElementById('open').classList.contains('active')) renderOpenPositions();
     const el = document.getElementById('lastUpdate');
     if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString();
@@ -1012,9 +1016,6 @@ function updateSidebar() {
   const closed = trades.filter(t => pnl(t) !== null);
   const totalPnl = closed.reduce((a, t) => a + pnl(t), 0);
   const eqTotal = equityEvents.reduce((a, e) => a + e.amount, 0);
-  const equity = eqTotal + totalPnl;
-  document.getElementById('sidebarEquity').textContent = '$' + equity.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0});
-  document.getElementById('sidebarChange').innerHTML = `<span class="${totalPnl >= 0 ? 'pos' : 'neg'}">${totalPnl >= 0 ? '▲' : '▼'} ${totalPnl >= 0 ? '+' : ''}$${Math.abs(totalPnl).toFixed(0)} Realized</span>`;
 
   // Unrealized P&L from live prices
   const openTrades = trades.filter(t => !t.exit_price);
@@ -1023,6 +1024,14 @@ function updateSidebar() {
     return a + (u || 0);
   }, 0);
   const hasLive = openTrades.some(t => livePrices[t.symbol]);
+
+  // Account Equity = deposits + realized P&L + unrealized P&L (live)
+  const equity = eqTotal + totalPnl + totalUnreal;
+  document.getElementById('sidebarEquity').textContent = '$' + equity.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0});
+
+  const combinedPnl = totalPnl + totalUnreal;
+  document.getElementById('sidebarChange').innerHTML = `<span class="${combinedPnl >= 0 ? 'pos' : 'neg'}">${combinedPnl >= 0 ? '▲' : '▼'} ${combinedPnl >= 0 ? '+' : ''}$${Math.abs(combinedPnl).toFixed(0)} Total</span> <span style="color:var(--muted);font-size:10px;">(${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toFixed(0)} realized${hasLive?', '+(totalUnreal>=0?'+':'')+'$'+Math.abs(totalUnreal).toFixed(0)+' unrealized':''})</span>`;
+
   document.getElementById('sidebarUnreal').innerHTML = hasLive
     ? `<span class="${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal >= 0 ? '+' : ''}$${Math.abs(totalUnreal).toFixed(0)}</span>`
     : `<span style="color:var(--muted)">—</span>`;
@@ -1206,9 +1215,24 @@ function renderEquityCurveChart(closed) {
   destroyC('ec');
   let cum = 0;
   const data = closed.map(t => { cum += pnl(t); return parseFloat(cum.toFixed(2)); });
+  const labels = closed.map(t => t.date);
+
+  // Add a live "Now" point that includes unrealized P&L from open positions
+  const openTrades = trades.filter(t => !t.exit_price);
+  const totalUnreal = openTrades.reduce((a, t) => { const u = unrealizedPnl(t); return a + (u || 0); }, 0);
+  const hasLive = openTrades.some(t => livePrices[t.symbol]);
+  if (openTrades.length) {
+    data.push(parseFloat((cum + totalUnreal).toFixed(2)));
+    labels.push('Now' + (hasLive ? '' : ' (loading)'));
+  }
+
   const isPos = !data.length || data[data.length-1] >= 0;
+  const liveIdx = openTrades.length ? data.length - 1 : -1;
+  const pointRadii = data.map((_, i) => i === liveIdx ? 4 : 0);
+  const pointColors = data.map((_, i) => i === liveIdx ? '#4A9EFF' : (isPos ? '#00C896' : '#FF5C5C'));
+
   const ctx = document.getElementById('cEquity').getContext('2d');
-  charts['ec'] = new Chart(ctx, { type:'line', data:{ labels:closed.map(t=>t.date), datasets:[{ data, borderColor:isPos?'#00C896':'#FF5C5C', borderWidth:2, pointRadius:0, fill:true, backgroundColor:isPos?'rgba(0,200,150,.06)':'rgba(255,92,92,.06)', tension:.4 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{color:'#64748B',font:{size:9},maxTicksLimit:8}, grid:{color:'rgba(255,255,255,.03)'} }, y:{ ticks:{color:'#64748B',font:{size:9},callback:v=>'$'+v}, grid:{color:'rgba(255,255,255,.04)'} } } } });
+  charts['ec'] = new Chart(ctx, { type:'line', data:{ labels, datasets:[{ data, borderColor:isPos?'#00C896':'#FF5C5C', borderWidth:2, pointRadius:pointRadii, pointBackgroundColor:pointColors, pointBorderColor:pointColors, fill:true, backgroundColor:isPos?'rgba(0,200,150,.06)':'rgba(255,92,92,.06)', tension:.4, segment:{ borderDash: ctx2 => (liveIdx>0 && ctx2.p1DataIndex===liveIdx) ? [5,4] : undefined } }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{color:'#64748B',font:{size:9},maxTicksLimit:8}, grid:{color:'rgba(255,255,255,.03)'} }, y:{ ticks:{color:'#64748B',font:{size:9},callback:v=>'$'+v}, grid:{color:'rgba(255,255,255,.04)'} } } } });
 }
 function renderWinLossDonut(w, l, awp, alp) {
   // kept for backwards compat — actual rendering now done in renderWinLossSection
