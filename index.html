@@ -2357,15 +2357,19 @@ async function loadMarketRegime(force = false) {
   const upd = document.getElementById('regimeLastUpdate');
   if (upd) upd.textContent = 'Loading…';
 
-  // Stooq symbols: ^VIX, ^TNX (10Y), ^TYX (30Y), ^FVX (5Y), ^IRX (13w), dxy.us, gld.us, spy.us
-  // All use same JSON quote endpoint — proven CORS-friendly
+  // Stooq symbols follow Stooq's OWN ticker convention, not Yahoo Finance's (^VIX, ^TNX, etc. don't
+  // exist on Stooq and silently resolve to no data, which is why these cards showed "—" forever):
+  //   VIX            -> vi.f       (S&P 500 VIX futures-style ticker)
+  //   US 10Y yield    -> 10yusy.b   (matches the .us equities suffix pattern used everywhere else)
+  //   US 5Y yield     -> 5yusy.b    (same {N}yusy.b family as 10yusy.b / 30yusy.b)
+  //   US Dollar Index -> dx.f       (ICE US Dollar Index futures-style ticker, not a literal "DXY" stock)
   const [fgi, vixD, tnxD, t2yD, dxyD, gldD, spyD,
     xleD, xlkD, xlfD, xluD, xlvD, xliD, xlpD, xlbD] = await Promise.all([
     fetchFearGreed(),
-    stooqQuote('^vix'),
-    stooqQuote('^tnx'),       // 10Y Treasury yield
-    stooqQuote('^fvx'),       // 5Y Treasury (proxy for 2Y spread direction)
-    stooqQuote('dxy.us'),     // US Dollar Index
+    stooqQuote('vi.f'),
+    stooqQuote('10yusy.b'), // 10Y Treasury yield
+    stooqQuote('5yusy.b'),  // 5Y Treasury (proxy for 2Y spread direction)
+    stooqQuote('dx.f'),     // US Dollar Index
     stooqQuote('gld.us'),     // Gold ETF
     stooqQuote('spy.us'),     // SPY for trend context
     stooqQuote('xle.us'),     // Energy
