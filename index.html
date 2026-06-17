@@ -31,8 +31,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 /* PWA safe area — handles iPhone notch and home bar */
 .shell{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
 .sidebar{padding-bottom:env(safe-area-inset-bottom);}
-.shell{display:flex;height:100vh;overflow:hidden;}
-.sidebar{width:225px;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;}
+.shell{display:none;height:100vh;overflow:hidden;}
+.sidebar{width:225px;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+.sidebar-scroll{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0;}
 .main{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
 .brand{padding:16px 18px 14px;border-bottom:1px solid var(--border);}
 .brand-logo{font-family:var(--mono);font-size:19px;font-weight:600;color:var(--teal);letter-spacing:-1px;}
@@ -51,6 +52,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .nav-item.active{background:var(--teal-dim);color:var(--teal);font-weight:500;}
 .nav-item .icon{font-size:15px;width:18px;display:inline-flex;align-items:center;justify-content:center;}
 .sidebar-footer{margin-top:auto;padding:14px;border-top:1px solid var(--border);}
+.logout-btn{width:100%;margin-top:14px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;color:var(--muted);font-size:11px;font-weight:400;cursor:pointer;font-family:var(--sans);opacity:.7;transition:opacity .15s;}
+.logout-btn:hover{opacity:1;color:var(--muted2);}
 .equity-badge{background:var(--dim);border-radius:var(--radius-sm);padding:10px 12px;}
 .eq-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
 .eq-val{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--teal);}
@@ -187,6 +190,7 @@ select option{background:var(--card);}
 /* LOADER */
 .loader-overlay{position:fixed;inset:0;background:rgba(11,15,23,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9998;}
 .loader-overlay.hidden{display:none;}
+.hidden{display:none !important;}
 .loader-spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px;}
 .loader-text{color:var(--muted);font-size:13px;}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -256,11 +260,94 @@ select option{background:var(--card);}
 .about-philosophy{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;border-left:3px solid var(--teal);}
 .about-philosophy-quote{font-size:15px;color:var(--text);line-height:1.7;font-style:italic;margin-bottom:10px;}
 .about-philosophy-attr{font-size:11px;color:var(--muted);font-family:var(--mono);}
+
+/* ── AUTH SCREEN (login / forgot password / set new password) ── */
+.auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:500;padding:20px;}
+.auth-card{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px 28px;}
+.auth-brand{display:flex;align-items:center;gap:9px;margin-bottom:26px;}
+.auth-brand-name{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--teal);letter-spacing:-0.5px;}
+.auth-brand-name span{color:var(--muted);font-weight:400;}
+.auth-title{font-size:17px;font-weight:600;color:var(--text);margin-bottom:5px;}
+.auth-sub{font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.5;}
+.auth-field{margin-bottom:14px;}
+.auth-field label{display:block;font-size:11px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;}
+.auth-field input{width:100%;background:var(--dim);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;transition:border-color .15s;}
+.auth-field input:focus{border-color:var(--teal);}
+.auth-btn{width:100%;background:var(--teal);color:#06251c;border:none;border-radius:var(--radius-sm);padding:11px;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px;transition:opacity .15s;}
+.auth-btn:hover{opacity:.9;}
+.auth-btn:disabled{opacity:.5;cursor:not-allowed;}
+.auth-link{text-align:center;font-size:12px;color:var(--blue);margin-top:16px;cursor:pointer;}
+.auth-link:hover{text-decoration:underline;}
+.auth-error{color:var(--coral);font-size:12px;margin-top:12px;text-align:center;min-height:1px;}
+.auth-success{color:var(--teal);font-size:12px;margin-top:12px;text-align:center;line-height:1.5;}
 </style>
 </head>
 <body>
 
-<div class="loader-overlay" id="loader">
+<!-- ══════════ AUTH: LOGIN / RESET PASSWORD SCREEN ══════════ -->
+<div id="authScreen" class="auth-screen hidden">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polyline points="3,18 7,13 11,15 16,8 21,3" fill="none" stroke="#00C896" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="3" cy="18" r="1.5" fill="#00C896"/><circle cx="7" cy="13" r="1.5" fill="#00C896"/>
+        <circle cx="11" cy="15" r="1.5" fill="#00C896"/><circle cx="16" cy="8" r="1.5" fill="#00C896"/>
+        <circle cx="21" cy="3" r="2" fill="#00C896"/>
+        <line x1="2" y1="21" x2="22" y2="21" stroke="rgba(0,200,150,0.25)" stroke-width="1"/>
+      </svg>
+      <div class="auth-brand-name">edge<span>journal</span></div>
+    </div>
+
+    <!-- VIEW: Sign In -->
+    <div id="authViewSignIn">
+      <div class="auth-title">Sign in</div>
+      <div class="auth-sub">Trade · Track · Improve</div>
+      <div class="auth-field">
+        <label>Email</label>
+        <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="username">
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')authSignIn()">
+      </div>
+      <button class="auth-btn" id="authSignInBtn" onclick="authSignIn()">Sign In</button>
+      <div class="auth-link" onclick="authShowView('forgot')">Forgot password?</div>
+      <div class="auth-error" id="authError"></div>
+    </div>
+
+    <!-- VIEW: Forgot Password -->
+    <div id="authViewForgot" class="hidden">
+      <div class="auth-title">Reset password</div>
+      <div class="auth-sub">Enter your email and we'll send a reset link.</div>
+      <div class="auth-field">
+        <label>Email</label>
+        <input type="email" id="authResetEmail" placeholder="you@example.com" autocomplete="username" onkeydown="if(event.key==='Enter')authSendReset()">
+      </div>
+      <button class="auth-btn" id="authResetBtn" onclick="authSendReset()">Send Reset Link</button>
+      <div class="auth-link" onclick="authShowView('signin')">← Back to sign in</div>
+      <div class="auth-error" id="authResetError"></div>
+      <div class="auth-success" id="authResetSuccess"></div>
+    </div>
+
+    <!-- VIEW: Set New Password (landed on via reset link) -->
+    <div id="authViewNewPassword" class="hidden">
+      <div class="auth-title">Set new password</div>
+      <div class="auth-sub">Choose a new password for your account.</div>
+      <div class="auth-field">
+        <label>New password</label>
+        <input type="password" id="authNewPassword" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <div class="auth-field">
+        <label>Confirm password</label>
+        <input type="password" id="authNewPassword2" placeholder="••••••••" autocomplete="new-password" onkeydown="if(event.key==='Enter')authSetNewPassword()">
+      </div>
+      <button class="auth-btn" id="authNewPwBtn" onclick="authSetNewPassword()">Update Password</button>
+      <div class="auth-error" id="authNewPwError"></div>
+    </div>
+  </div>
+</div>
+
+<div class="loader-overlay hidden" id="loader">
   <div class="loader-spinner"></div>
   <div class="loader-text">Connecting to cloud database…</div>
 </div>
@@ -325,8 +412,7 @@ select option{background:var(--card);}
   </div>
 </div>
 
-<div class="shell">
-<!-- SIDEBAR -->
+<div class="shell" id="appShell">
 <div class="sidebar">
   <div class="brand">
     <div class="brand-mark">
@@ -352,6 +438,7 @@ select option{background:var(--card);}
     </div>
     <div class="brand-sub"><span class="sync-dot" id="syncDot"></span> Cloud · Live Prices</div>
   </div>
+  <div class="sidebar-scroll">
   <div class="nav-group">
     <div class="nav-label">Main</div>
     <button class="nav-item active" onclick="sw('dashboard',this)"><span class="icon">📊</span> Dashboard</button>
@@ -382,6 +469,8 @@ select option{background:var(--card);}
       <div style="font-family:var(--mono);font-size:15px;font-weight:600;color:var(--amber);" id="sidebarMaxStop">—</div>
       <div style="font-size:10px;color:var(--muted);margin-top:2px;" id="sidebarMaxStopSub">No stops set</div>
     </div>
+    <button onclick="authSignOut()" class="logout-btn">⎋ Log Out</button>
+  </div>
   </div>
 </div>
 
@@ -422,7 +511,7 @@ select option{background:var(--card);}
         </div>
       </div>
       <!-- EQUITY CURVE — right after open positions -->
-      <div class="chart-card" style="margin-bottom:14px;"><div class="chart-card-title">P&L Curve</div><div style="position:relative;height:155px;"><canvas id="cEquity" role="img" aria-label="P&L curve">.</canvas></div></div>
+      <div class="chart-card" style="margin-bottom:14px;"><div style="display:flex;align-items:baseline;justify-content:space-between;"><div class="chart-card-title">Cumulative P&L</div><div id="ecCurrentVal" style="font-family:var(--mono);font-size:13px;font-weight:600;"></div></div><div style="position:relative;height:155px;"><canvas id="cEquity" role="img" aria-label="Cumulative P&L curve">.</canvas></div></div>
       <!-- WIN/LOSS + RISK STATS row after equity curve -->
       <div class="charts-2b" style="margin-bottom:14px;" id="postEquityRow">
         <div class="chart-card" style="margin-bottom:0">
@@ -542,7 +631,7 @@ select option{background:var(--card);}
         </div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">Full Equity Curve</div>
+        <div class="chart-card-title">Cumulative P&L</div>
         <div style="position:relative;height:200px;"><canvas id="cEqFull" role="img" aria-label="Full equity curve">.</canvas></div>
       </div>
     </div>
@@ -714,9 +803,9 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
   },
   global: {
     fetch: (...args) => fetch(...args)
@@ -727,6 +816,8 @@ const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
 let trades = [];
 let equityEvents = [];
 let setups = [];
+let currentUser = null;      // Supabase auth user object once signed in
+function userEmail() { return currentUser?.email ? currentUser.email.toLowerCase() : null; }
 let livePrices = {};       // { SYMBOL: { price, change, changePct } }
 let liveInterval = null;
 let period = 'all';
@@ -1223,13 +1314,37 @@ function renderEquityCurveChart(closedIgnored) {
     return;
   }
 
-  // Build the date range: earliest open date -> today
+  // ── FIXED SEED HISTORY (6/11–6/16/2026) ──────────────────────────────────
+  // Hardcoded baseline so the chart always shows this exact early history regardless
+  // of what's in the trades table. Each value is that day's own realized+unrealized
+  // P&L snapshot — frozen as-is, not a running total carried into later days.
+  // From 6/17/2026 onward the chart switches to live Supabase-derived data: each day
+  // independently computes its OWN realized P&L (closed trades that day) plus, for
+  // today only, live unrealized P&L on open positions — same "realized+unrealized
+  // snapshot for that day" logic as the seed, just computed instead of hardcoded.
+  const SEED_CUTOFF = '2026-06-17'; // first day live data takes over
+  const SEED_PNL = {
+    '2026-06-11': 0,
+    '2026-06-12': 12,
+    '2026-06-13': 12,
+    '2026-06-14': 110,
+    '2026-06-15': -340,
+    '2026-06-16': -914
+  };
+  const seedDates = Object.keys(SEED_PNL).sort();
+  const seedStart = seedDates[0];
+  const seedEnd = seedDates[seedDates.length - 1];
+
+  // Build the date range: seed start -> today. Live trades only contribute P&L
+  // from SEED_CUTOFF onward, so the hardcoded seed days are never overwritten.
   const toDay = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
-  const earliest = toDay(allT.reduce((min,t) => t.date < min ? t.date : min, allT[0].date));
+  const closedT = allT.filter(t => t.exit_price !== null && t.exit_price !== undefined && t.exit_date && t.exit_date >= SEED_CUTOFF);
   const today = toDay(new Date());
+  const earliest = toDay(seedStart);
 
   const days = [];
-  for (let d = new Date(earliest); d <= today; d.setDate(d.getDate()+1)) {
+  const loopEnd = today < earliest ? earliest : today; // safety: never end before we start
+  for (let d = new Date(earliest); d <= loopEnd; d.setDate(d.getDate()+1)) {
     days.push(toDay(d));
   }
 
@@ -1242,15 +1357,22 @@ function renderEquityCurveChart(closedIgnored) {
   days.forEach(day => {
     const dayStr = fmt(day);
 
-    // Realized P&L up to this day
-    let realized = 0;
-    allT.forEach(t => {
-      if (t.exit_price !== null && t.exit_price !== undefined && t.exit_date && t.exit_date <= dayStr) {
-        realized += pnl(t);
-      }
-    });
+    let realized;
+    if (dayStr <= seedEnd) {
+      // Within the hardcoded seed window — frozen historical snapshot, used as-is.
+      realized = SEED_PNL[dayStr] !== undefined ? SEED_PNL[dayStr] : 0;
+    } else {
+      // Past the seed window — independent of the seed entirely. Realized P&L is the
+      // running total of real closed trades (exit_date >= SEED_CUTOFF) up to this day.
+      // The seed's ending value is NOT carried forward as a baseline.
+      realized = 0;
+      closedT.forEach(t => {
+        if (t.exit_date <= dayStr) realized += pnl(t);
+      });
+    }
 
-    // Unrealized P&L (today only, using live price)
+    // Unrealized P&L (today only, using live price) — added on top of today's realized,
+    // giving each day its own complete realized+unrealized snapshot.
     let unrealized = 0;
     allT.forEach(t => {
       const stillOpenOnDay = t.date <= dayStr && (!t.exit_date || t.exit_date > dayStr);
@@ -1266,21 +1388,26 @@ function renderEquityCurveChart(closedIgnored) {
     labels.push(isToday(day) ? 'Today' : day.toLocaleDateString('en-US', {month:'short', day:'numeric'}));
   });
 
-  // Color each line SEGMENT green/red based on whether P&L is rising or falling at that point —
-  // deposits are excluded entirely so adding capital never looks like a "gain".
+  // Strictly sign-based color — red when negative, green when positive/zero,
+  // for EVERY point including today, regardless of whether positions are still open.
   const lastIdx = pnlData.length - 1;
-  const openCount = trades.filter(t => !t.exit_price).length;
-  const segColor = ctx2 => {
-    const v0 = pnlData[ctx2.p0DataIndex];
-    const v1 = pnlData[ctx2.p1DataIndex];
-    return v1 >= v0 ? '#00C896' : '#FF5C5C';
-  };
-  const pointColor = (_, i) => (i === lastIdx && openCount) ? '#4A9EFF' : (pnlData[i] >= 0 ? '#00C896' : '#FF5C5C');
-  const pointRadii = pnlData.map((_, i) => (i === lastIdx && openCount) ? 4 : 0);
-  const pointColors = pnlData.map((v, i) => pointColor(v, i));
+  const pointColor = i => pnlData[i] >= 0 ? '#00C896' : '#FF5C5C';
+  const pointRadii = pnlData.map((_, i) => i === lastIdx ? 4 : 3);
+  const pointColors = pnlData.map((_, i) => pointColor(i));
 
   const lastVal = pnlData[lastIdx] ?? 0;
   const overallPos = lastVal >= 0;
+  const lineColor = overallPos ? '#00C896' : '#FF5C5C';
+
+  // Live "current P&L" label above the chart, alongside the title.
+  const curEl = document.getElementById('ecCurrentVal');
+  if (curEl) {
+    curEl.textContent = (lastVal >= 0 ? '+' : '−') + '$' + Math.abs(lastVal).toLocaleString();
+    curEl.style.color = overallPos ? '#00C896' : '#FF5C5C';
+  }
+
+  // Full date per point (not just "Today") so hovering any history point shows exactly what day it was.
+  const fullDates = days.map(d => d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }));
 
   const ctx = document.getElementById('cEquity').getContext('2d');
   charts['ec'] = new Chart(ctx, {
@@ -1289,29 +1416,32 @@ function renderEquityCurveChart(closedIgnored) {
       labels,
       datasets: [{
         data: pnlData,
-        borderColor: overallPos ? '#00C896' : '#FF5C5C',
-        segment: { borderColor: segColor },
+        borderColor: lineColor,
         borderWidth: 2,
         pointRadius: pointRadii,
         pointBackgroundColor: pointColors,
         pointBorderColor: pointColors,
+        pointHoverRadius: 5,
         fill: true,
-        backgroundColor: ctxFill => {
-          const v = ctxFill.parsed ? ctxFill.parsed.y : lastVal;
-          return overallPos ? 'rgba(0,200,150,.06)' : 'rgba(255,92,92,.06)';
-        },
-        tension: .3
+        backgroundColor: overallPos ? 'rgba(0,200,150,.08)' : 'rgba(255,92,92,.08)',
+        tension: .25
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: c => (c.parsed.y >= 0 ? '+' : '') + '$' + c.parsed.y.toLocaleString() } }
+        tooltip: {
+          callbacks: {
+            title: c => fullDates[c[0].dataIndex],
+            label: c => 'P&L: ' + (c.parsed.y >= 0 ? '+' : '−') + '$' + Math.abs(c.parsed.y).toLocaleString()
+          }
+        }
       },
       scales: {
-        x: { ticks: { color:'#64748B', font:{size:9}, maxTicksLimit:8 }, grid: { color:'rgba(255,255,255,.03)' } },
-        y: { ticks: { color:'#64748B', font:{size:9}, callback: v => '$'+v }, grid: { color:'rgba(255,255,255,.04)' } }
+        x: { ticks: { color:'#64748B', font:{size:9}, maxTicksLimit:8, autoSkip:true }, grid: { color:'rgba(255,255,255,.03)' } },
+        y: { ticks: { color:'#64748B', font:{size:9}, callback: v => '$'+v.toLocaleString() }, grid: { color:'rgba(255,255,255,.04)' } }
       }
     }
   });
@@ -1567,7 +1697,8 @@ async function addTrade() {
     dir: document.getElementById('f-dir').value, qty, entry,
     exit_price: exit, stop,
     setup: document.getElementById('f-setup').value,
-    notes: document.getElementById('f-notes').value
+    notes: document.getElementById('f-notes').value,
+    user_id: userEmail()
   };
   document.getElementById('btnAdd').disabled = true;
   setSyncing(true);
@@ -1620,19 +1751,71 @@ function renderEquity() {
     </div>`;
 
   destroyC('eqf');
-  const sorted2 = closed.sort((a,b) => a.date.localeCompare(b.date));
-  let tcum = baseEq;
-  const eqData = sorted2.map(t => { tcum += pnl(t); return parseFloat(tcum.toFixed(2)); });
-  if (eqData.length) {
+  // ── CUMULATIVE P&L — one point per CALENDAR DAY (not per trade), running total ──
+  // Pure trading P&L only (deposits/withdrawals excluded), carried flat across days with no exits.
+  const sorted2 = closed.filter(t => t.exit_date).sort((a,b) => a.exit_date.localeCompare(b.exit_date));
+  if (sorted2.length) {
+    const toDay = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+    const fmt = d => d.toISOString().slice(0,10);
+    const earliest = toDay(sorted2[0].exit_date);
+    const today = toDay(new Date());
+
+    // Sum realized P&L per exit day
+    const pnlByDay = {};
+    sorted2.forEach(t => {
+      const k = fmt(toDay(t.exit_date));
+      pnlByDay[k] = (pnlByDay[k] || 0) + pnl(t);
+    });
+
+    const days = [];
+    for (let d = new Date(earliest); d <= today; d.setDate(d.getDate()+1)) days.push(toDay(d));
+
+    let running = 0;
+    const eqLabels = [];
+    const eqData = [];
+    days.forEach(day => {
+      const k = fmt(day);
+      if (pnlByDay[k]) running += pnlByDay[k];
+      eqLabels.push(day.toLocaleDateString('en-US', { month:'short', day:'2-digit', year: '2-digit' }));
+      eqData.push(parseFloat(running.toFixed(2)));
+    });
+
+    const overallPos = eqData[eqData.length-1] >= 0;
+    const lineColor = overallPos ? '#00C896' : '#FF5C5C';
+
     const ctx = document.getElementById('cEqFull').getContext('2d');
-    charts['eqf'] = new Chart(ctx, { type:'line', data:{ labels:sorted2.map(t=>t.date), datasets:[{ data:eqData, borderColor:'#00C896', borderWidth:2, pointRadius:0, fill:true, backgroundColor:'rgba(0,200,150,.07)', tension:.35 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{color:'#64748B',font:{size:10},maxTicksLimit:10}, grid:{color:'rgba(255,255,255,.03)'} }, y:{ ticks:{color:'#64748B',font:{size:10},callback:v=>'$'+v.toLocaleString()}, grid:{color:'rgba(255,255,255,.04)'} } } } });
+    charts['eqf'] = new Chart(ctx, {
+      type: 'line',
+      data: { labels: eqLabels, datasets: [{
+        data: eqData,
+        borderColor: lineColor,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointHoverBackgroundColor: lineColor,
+        fill: true,
+        backgroundColor: overallPos ? 'rgba(0,200,150,.08)' : 'rgba(255,92,92,.08)',
+        tension: .25
+      }]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: c => (c.parsed.y >= 0 ? '+' : '') + '$' + c.parsed.y.toLocaleString() } }
+        },
+        scales: {
+          x: { ticks: { color:'#64748B', font:{size:10}, maxTicksLimit:8, autoSkip:true }, grid: { color:'rgba(255,255,255,.03)' } },
+          y: { ticks: { color:'#64748B', font:{size:10}, callback: v => '$'+v.toLocaleString() }, grid: { color:'rgba(255,255,255,.04)' } }
+        }
+      }
+    });
   }
 }
 async function addEquity() {
   const d = document.getElementById('eq-date').value;
   const a = parseFloat(document.getElementById('eq-amt').value);
   if (!d || isNaN(a)) { toast('Date and amount are required', 'error'); return; }
-  const row = { id: 'e'+Date.now(), date: d, amount: a };
+  const row = { id: 'e'+Date.now(), date: d, amount: a, user_id: userEmail() };
   document.getElementById('btnEqAdd').disabled = true;
   setSyncing(true);
   const { error } = await db.from('equity_events').insert([row]);
@@ -1754,7 +1937,8 @@ async function submitPartialClose() {
     exit_price: exitPrice,
     stop: t.stop,
     setup: t.setup,
-    notes: notes || ('Partial close from #' + t.id)
+    notes: notes || ('Partial close from #' + t.id),
+    user_id: userEmail()
   };
 
   // 2. Update the original trade to reduce qty, flag as partially closed
@@ -1895,7 +2079,7 @@ async function addSetup() {
   const v = document.getElementById('new-setup').value.trim();
   if (!v || setups.includes(v)) return;
   setSyncing(true);
-  const { error } = await db.from('setups').insert([{ name: v }]);
+  const { error } = await db.from('setups').insert([{ name: v, user_id: userEmail() }]);
   setSyncing(false);
   if (error) { toast('Save failed: ' + (error?.message||'Unknown error'), 'error'); return; }
   setups.push(v); renderSetupManager(); refreshSetupSelect();
@@ -2326,10 +2510,130 @@ async function loadMarketRegime(force = false) {
   if (upd) upd.textContent = 'Updated ' + new Date().toLocaleTimeString();
 }
 
-// ── INIT ──
-document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
-document.getElementById('eq-date').value = new Date().toISOString().split('T')[0];
-loadAll();
+// ══════════════════════════════════════════════════════════════════════════
+// AUTH — Supabase email/password sign-in, password reset, session gating
+// ══════════════════════════════════════════════════════════════════════════
+function authShowView(view) {
+  document.getElementById('authViewSignIn').classList.toggle('hidden', view !== 'signin');
+  document.getElementById('authViewForgot').classList.toggle('hidden', view !== 'forgot');
+  document.getElementById('authViewNewPassword').classList.toggle('hidden', view !== 'newpw');
+  document.getElementById('authError').textContent = '';
+  document.getElementById('authResetError').textContent = '';
+  document.getElementById('authResetSuccess').textContent = '';
+  document.getElementById('authNewPwError').textContent = '';
+}
+
+function showAuthScreen(view) {
+  document.getElementById('authScreen').classList.remove('hidden');
+  document.getElementById('appShell').style.display = 'none';
+  authShowView(view || 'signin');
+}
+
+function showApp() {
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('appShell').style.display = 'flex';
+}
+
+async function authSignIn() {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+  const btn = document.getElementById('authSignInBtn');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'Enter your email and password.'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const { data, error } = await db.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    currentUser = data.user;
+    showApp();
+    bootApp();
+  } catch (err) {
+    errEl.textContent = err?.message || 'Sign in failed. Check your email and password.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+}
+
+async function authSendReset() {
+  const email = document.getElementById('authResetEmail').value.trim();
+  const errEl = document.getElementById('authResetError');
+  const okEl = document.getElementById('authResetSuccess');
+  const btn = document.getElementById('authResetBtn');
+  errEl.textContent = ''; okEl.textContent = '';
+  if (!email) { errEl.textContent = 'Enter your email address.'; return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const { error } = await db.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname
+    });
+    if (error) throw error;
+    okEl.textContent = 'Check your email for a password reset link.';
+  } catch (err) {
+    errEl.textContent = err?.message || 'Could not send reset email.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send Reset Link';
+  }
+}
+
+async function authSetNewPassword() {
+  const pw1 = document.getElementById('authNewPassword').value;
+  const pw2 = document.getElementById('authNewPassword2').value;
+  const errEl = document.getElementById('authNewPwError');
+  const btn = document.getElementById('authNewPwBtn');
+  errEl.textContent = '';
+  if (!pw1 || pw1.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
+  if (pw1 !== pw2) { errEl.textContent = 'Passwords do not match.'; return; }
+  btn.disabled = true; btn.textContent = 'Updating…';
+  try {
+    const { data, error } = await db.auth.updateUser({ password: pw1 });
+    if (error) throw error;
+    currentUser = data.user;
+    toast('Password updated ✓', 'success');
+    showApp();
+    bootApp();
+  } catch (err) {
+    errEl.textContent = err?.message || 'Could not update password.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Update Password';
+  }
+}
+
+async function authSignOut() {
+  await db.auth.signOut();
+  currentUser = null;
+  trades = []; equityEvents = []; setups = [];
+  if (liveInterval) { clearInterval(liveInterval); liveInterval = null; }
+  showAuthScreen('signin');
+}
+
+// Runs once we have a confirmed signed-in user — loads data and starts the app.
+function bootApp() {
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('eq-date').value = new Date().toISOString().split('T')[0];
+  loadAll();
+}
+
+// ── Session bootstrap ──
+// Supabase Auth sends password-reset links as a URL containing a recovery token;
+// onAuthStateChange fires PASSWORD_RECOVERY when that token is detected, so we
+// route straight to the "set new password" view instead of the dashboard.
+db.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    showAuthScreen('newpw');
+  }
+});
+
+(async function initAuth() {
+  const { data } = await db.auth.getSession();
+  if (data?.session?.user) {
+    currentUser = data.session.user;
+    showApp();
+    bootApp();
+  } else {
+    showAuthScreen('signin');
+  }
+})();
 </script>
 <script>
 if ('serviceWorker' in navigator) {
