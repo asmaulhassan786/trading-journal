@@ -459,10 +459,24 @@ select option{background:var(--card);}
       <div class="eq-val" id="sidebarEquity">—</div>
       <div class="eq-change" id="sidebarChange"></div>
     </div>
-    <div style="margin-top:10px;background:var(--dim);border-radius:var(--radius-sm);padding:9px 11px;">
-      <div class="eq-label">Unrealized P&L</div>
-      <div class="eq-val" id="sidebarUnreal" style="font-size:15px;">—</div>
-      <div style="font-size:10px;color:var(--muted);margin-top:2px;" id="sidebarUnrealSub">Open positions</div>
+    <div style="margin-top:10px;background:var(--dim);border-radius:var(--radius-sm);padding:9px 11px;border-left:2px solid rgba(226,75,75,.5);">
+      <div class="eq-label" style="color:var(--coral);">Total Risk on Capital</div>
+      <div style="display:flex;align-items:baseline;gap:6px;margin-top:2px;">
+        <div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--coral);" id="sidebarRiskPct">—</div>
+        <div style="font-size:10px;color:var(--muted);">of current equity</div>
+      </div>
+      <div style="height:5px;background:rgba(148,163,184,.18);border-radius:3px;overflow:hidden;margin-top:6px;">
+        <div id="sidebarRiskBar" style="height:100%;width:0%;background:var(--coral);border-radius:3px;transition:width .2s;"></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:5px;">
+        <span style="font-size:9px;color:var(--muted);">vs <span id="sidebarRiskGuidelineLabel">10</span>% your guideline</span>
+        <span onclick="startGuidelineEdit()" id="sidebarGuidelineEditBtn" style="font-size:9px;color:var(--blue);cursor:pointer;">edit</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);margin-top:5px;" id="sidebarRiskAmt"></div>
+      <div id="sidebarGuidelineEditRow" class="hidden" style="display:flex;gap:6px;margin-top:6px;">
+        <input id="sidebarGuidelineInput" type="number" min="0.1" max="100" step="0.1" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--text);font-size:11px;font-family:var(--mono);" placeholder="10" onkeydown="if(event.key==='Enter')saveGuideline()">
+        <button onclick="saveGuideline()" style="background:var(--coral);border:none;border-radius:4px;padding:0 8px;color:#2c0a08;font-size:10px;font-weight:600;cursor:pointer;">Save</button>
+      </div>
     </div>
     <div style="margin-top:10px;background:var(--dim);border-radius:var(--radius-sm);padding:9px 11px;border-left:2px solid rgba(245,166,35,.5);">
       <div class="eq-label" style="color:var(--amber);">Max Loss If All Stops Hit</div>
@@ -506,7 +520,7 @@ select option{background:var(--card);}
             <th>#</th><th>Symbol</th><th>Open Date</th><th>Dir</th>
             <th>Entry $</th><th>Qty</th><th>Position $</th>
             <th>Live Price</th><th>Week Change</th><th>Unrealized P/L</th><th>Unreal %</th>
-            <th>Stop $</th><th>Risk $</th><th>Setup</th><th>Days Held</th><th></th>
+            <th>Stop $</th><th>Stop Risk $</th><th>Cap Risk $</th><th>Setup</th><th>Days Held</th><th></th>
           </tr></thead><tbody id="dashOpenBody"></tbody></table>
         </div>
       </div>
@@ -561,7 +575,7 @@ select option{background:var(--card);}
             <th>#</th><th>Symbol</th><th>Open Date</th><th>Dir</th>
             <th>Entry $</th><th>Qty</th><th>Position $</th>
             <th>Live Price</th><th>Week Change</th><th>Unrealized P/L</th>
-            <th>Unreal %</th><th>Stop $</th><th>Risk $</th><th>Setup</th><th>Days Held</th><th></th>
+            <th>Unreal %</th><th>Stop $</th><th>Stop Risk $</th><th>Cap Risk $</th><th>Setup</th><th>Days Held</th><th></th>
           </tr></thead><tbody id="openBody"></tbody></table>
         </div>
       </div>
@@ -817,6 +831,8 @@ let trades = [];
 let equityEvents = [];
 let setups = [];
 let currentUser = null;      // Supabase auth user object once signed in
+let dailySnapshots = {};     // { 'YYYY-MM-DD': { realized_pnl, unrealized_pnl, total_pnl, ... } } — locked-in history from daily_pnl_snapshots table
+let userRiskGuideline = 10;  // "Your Guideline" — personal risk-on-capital ceiling (%), loaded from user_settings per account
 function userEmail() { return currentUser?.email ? currentUser.email.toLowerCase() : null; }
 let livePrices = {};       // { SYMBOL: { price, change, changePct } }
 let liveInterval = null;
@@ -1005,17 +1021,31 @@ async function loadAll() {
   showLoader(true);
   setSyncing(true);
   try {
-    const [t, e, s] = await Promise.all([
+    const [t, e, s, snap, settings] = await Promise.all([
       db.from('trades').select('*').order('date', { ascending: true }),
       db.from('equity_events').select('*').order('date', { ascending: true }),
-      db.from('setups').select('*').order('id', { ascending: true })
+      db.from('setups').select('*').order('id', { ascending: true }),
+      db.from('daily_pnl_snapshots').select('*').order('snapshot_date', { ascending: true }),
+      db.from('user_settings').select('*').eq('user_id', userEmail()).maybeSingle()
     ]);
     if (t.error) throw t.error;
     if (e.error) throw e.error;
     if (s.error) throw s.error;
+    // Snapshot table may not exist yet if the SQL migration hasn't been run —
+    // don't fail the whole app load over it, just fall back to no historical snapshots.
     trades = t.data || [];
     equityEvents = e.data || [];
     setups = s.data ? s.data.map(r => r.name) : [];
+    dailySnapshots = {};
+    if (!snap.error && snap.data) {
+      snap.data.forEach(row => { dailySnapshots[row.snapshot_date] = row; });
+    } else if (snap.error) {
+      console.warn('[daily_pnl_snapshots] not available yet:', snap.error.message);
+    }
+    // user_settings may not exist yet for this user (no row created) — default to 10%.
+    userRiskGuideline = (!settings.error && settings.data && settings.data.risk_guideline_pct != null)
+      ? Number(settings.data.risk_guideline_pct)
+      : 10;
     refreshSetupSelect();
     updateSidebar();
     renderDashboard();
@@ -1121,12 +1151,16 @@ function updateSidebar() {
   document.getElementById('sidebarEquity').textContent = '$' + equity.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0});
 
   const combinedPnl = totalPnl + totalUnreal;
-  document.getElementById('sidebarChange').innerHTML = `<span class="${combinedPnl >= 0 ? 'pos' : 'neg'}">${combinedPnl >= 0 ? '▲' : '▼'} ${combinedPnl >= 0 ? '+' : ''}$${Math.abs(combinedPnl).toFixed(0)} Total</span> <span style="color:var(--muted);font-size:10px;">(${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toFixed(0)} realized${hasLive?', '+(totalUnreal>=0?'+':'')+'$'+Math.abs(totalUnreal).toFixed(0)+' unrealized':''})</span>`;
+  document.getElementById('sidebarChange').innerHTML = `<div><span class="${combinedPnl >= 0 ? 'pos' : 'neg'}">${combinedPnl >= 0 ? '▲' : '▼'} ${combinedPnl >= 0 ? '+' : ''}$${Math.abs(combinedPnl).toFixed(0)} Total</span></div><div style="color:var(--muted);font-size:10px;margin-top:2px;">(${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toFixed(0)} realized${hasLive?', '+(totalUnreal>=0?'+':'')+'$'+Math.abs(totalUnreal).toFixed(0)+' unrealized':''})</div>`;
 
-  document.getElementById('sidebarUnreal').innerHTML = hasLive
-    ? `<span class="${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal >= 0 ? '+' : ''}$${Math.abs(totalUnreal).toFixed(0)}</span>`
-    : `<span style="color:var(--muted)">—</span>`;
-  document.getElementById('sidebarUnrealSub').textContent = `${openTrades.length} open position${openTrades.length !== 1 ? 's' : ''}`;
+  const sidebarUnrealEl = document.getElementById('sidebarUnreal');
+  if (sidebarUnrealEl) {
+    sidebarUnrealEl.innerHTML = hasLive
+      ? `<span class="${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal >= 0 ? '+' : ''}$${Math.abs(totalUnreal).toFixed(0)}</span>`
+      : `<span style="color:var(--muted)">—</span>`;
+  }
+  const sidebarUnrealSubEl = document.getElementById('sidebarUnrealSub');
+  if (sidebarUnrealSubEl) sidebarUnrealSubEl.textContent = `${openTrades.length} open position${openTrades.length !== 1 ? 's' : ''}`;
 }
 
 // ── DASHBOARD ──
@@ -1258,6 +1292,48 @@ function renderStopExposure() {
   if (sidebarMaxStop) sidebarMaxStop.textContent = maxRisk ? '-$' + maxRisk.toFixed(0) : '—';
   if (sidebarMaxStopSub) sidebarMaxStopSub.textContent = withStop.length ? withStop.length + ' position' + (withStop.length !== 1 ? 's' : '') + ' · hover for detail' : 'No stops set';
 
+  // Total Risk on Capital — sum of the Cap Risk column (NOT Max Loss If All Stops Hit) across
+  // ALL open positions, expressed as a % of CURRENT account equity, plotted against the
+  // user's own editable guideline. Cap Risk doesn't require a stop to be set; mirrors the
+  // exact same per-position formula used in the Open Positions table's Cap Risk column:
+  //   Long:  0 if live(or entry) >= entry, else (entry - live) * qty
+  //   Short: 0 if live(or entry) <= entry, else (live - entry) * qty
+  const totalCapRisk = openT.reduce((sum, t) => {
+    const lp = livePrices[t.symbol];
+    const capPriceRef = (lp && lp.price) ? lp.price : t.entry;
+    const capRisk = t.dir === 'long'
+      ? (capPriceRef >= t.entry ? 0 : (t.entry - capPriceRef) * t.qty)
+      : (capPriceRef <= t.entry ? 0 : (capPriceRef - t.entry) * t.qty);
+    return sum + capRisk;
+  }, 0);
+
+  const closedForEq = trades.filter(t => pnl(t) !== null);
+  const totalPnlForEq = closedForEq.reduce((a, t) => a + pnl(t), 0);
+  const eqTotalForEq = equityEvents.reduce((a, e) => a + e.amount, 0);
+  const totalUnrealForEq = openT.reduce((a, t) => a + (unrealizedPnl(t) || 0), 0);
+  const currentEquity = eqTotalForEq + totalPnlForEq + totalUnrealForEq;
+  const riskPct = currentEquity > 0 ? (totalCapRisk / currentEquity) * 100 : 0;
+
+  const sidebarRiskPct = document.getElementById('sidebarRiskPct');
+  const sidebarRiskAmt = document.getElementById('sidebarRiskAmt');
+  const sidebarRiskBar = document.getElementById('sidebarRiskBar');
+  const sidebarRiskGuidelineLabel = document.getElementById('sidebarRiskGuidelineLabel');
+  const withinGuideline = riskPct <= userRiskGuideline;
+  if (sidebarRiskPct) {
+    sidebarRiskPct.textContent = currentEquity > 0 ? riskPct.toFixed(1) + '%' : '—';
+    sidebarRiskPct.style.color = withinGuideline ? 'var(--teal)' : 'var(--coral)';
+  }
+  if (sidebarRiskAmt) {
+    sidebarRiskAmt.textContent = totalCapRisk ? '-$' + totalCapRisk.toFixed(0) + ' at risk' : '$0 at risk';
+  }
+  if (sidebarRiskGuidelineLabel) sidebarRiskGuidelineLabel.textContent = userRiskGuideline;
+  if (sidebarRiskBar) {
+    const barPct = userRiskGuideline > 0 ? Math.min(100, (riskPct / userRiskGuideline) * 100) : 0;
+    sidebarRiskBar.style.width = barPct + '%';
+    // Teal when current risk is at or below the user's own guideline, coral once it exceeds it.
+    sidebarRiskBar.style.background = withinGuideline ? 'var(--teal)' : 'var(--coral)';
+  }
+
   const closedAll = trades.filter(t => { const p = t.exit_price; return p !== null && p !== undefined; });
   const winsAll = closedAll.filter(t => { const p = (t.dir==='long')?(t.exit_price-t.entry)*t.qty:(t.entry-t.exit_price)*t.qty; return p>0; });
   const lossesAll = closedAll.filter(t => { const p = (t.dir==='long')?(t.exit_price-t.entry)*t.qty:(t.entry-t.exit_price)*t.qty; return p<0; });
@@ -1274,6 +1350,50 @@ function renderStopExposure() {
       <div class="ssub">${withoutStop.length ? '$' + unprotected.toLocaleString() + ' · no stop set' : 'All positions protected ✓'}</div>
     </div>
   `;
+}
+
+// ── RISK GUIDELINE EDIT (Total Risk on Capital card) ──
+function startGuidelineEdit() {
+  const row = document.getElementById('sidebarGuidelineEditRow');
+  const input = document.getElementById('sidebarGuidelineInput');
+  const btn = document.getElementById('sidebarGuidelineEditBtn');
+  if (!row || !input) return;
+  input.value = userRiskGuideline;
+  row.classList.remove('hidden');
+  if (btn) btn.style.display = 'none';
+  input.focus();
+  input.select();
+}
+
+async function saveGuideline() {
+  const input = document.getElementById('sidebarGuidelineInput');
+  const row = document.getElementById('sidebarGuidelineEditRow');
+  const btn = document.getElementById('sidebarGuidelineEditBtn');
+  if (!input) return;
+  const val = parseFloat(input.value);
+  if (isNaN(val) || val <= 0 || val > 100) {
+    toast('Enter a guideline between 0.1% and 100%', 'error');
+    return;
+  }
+  const rounded = parseFloat(val.toFixed(1));
+
+  setSyncing(true);
+  const { error } = await db.from('user_settings').upsert(
+    { user_id: userEmail(), risk_guideline_pct: rounded, updated_at: new Date().toISOString() },
+    { onConflict: 'user_id' }
+  );
+  setSyncing(false);
+
+  if (error) {
+    toast('Could not save guideline: ' + (error?.message || 'Unknown error'), 'error');
+    return;
+  }
+
+  userRiskGuideline = rounded;
+  if (row) row.classList.add('hidden');
+  if (btn) btn.style.display = '';
+  renderStopExposure();
+  toast('Guideline updated ✓', 'success');
 }
 
 function renderPerTradeChart(closed) {
@@ -1314,33 +1434,19 @@ function renderEquityCurveChart(closedIgnored) {
     return;
   }
 
-  // ── FIXED SEED HISTORY (6/11–6/16/2026) ──────────────────────────────────
-  // Hardcoded baseline so the chart always shows this exact early history regardless
-  // of what's in the trades table. Each value is that day's own realized+unrealized
-  // P&L snapshot — frozen as-is, not a running total carried into later days.
-  // From 6/17/2026 onward the chart switches to live Supabase-derived data: each day
-  // independently computes its OWN realized P&L (closed trades that day) plus, for
-  // today only, live unrealized P&L on open positions — same "realized+unrealized
-  // snapshot for that day" logic as the seed, just computed instead of hardcoded.
-  const SEED_CUTOFF = '2026-06-17'; // first day live data takes over
-  const SEED_PNL = {
-    '2026-06-11': 0,
-    '2026-06-12': 12,
-    '2026-06-13': 12,
-    '2026-06-14': 110,
-    '2026-06-15': -340,
-    '2026-06-16': -914
-  };
-  const seedDates = Object.keys(SEED_PNL).sort();
-  const seedStart = seedDates[0];
-  const seedEnd = seedDates[seedDates.length - 1];
-
-  // Build the date range: seed start -> today. Live trades only contribute P&L
-  // from SEED_CUTOFF onward, so the hardcoded seed days are never overwritten.
+  // Build the date range: earliest available data point -> today. No hardcoded seed —
+  // every user's chart starts purely from their own real trades / locked-in daily
+  // snapshots (both already correctly isolated per-account via Supabase RLS).
   const toDay = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
-  const closedT = allT.filter(t => t.exit_price !== null && t.exit_price !== undefined && t.exit_date && t.exit_date >= SEED_CUTOFF);
+  const closedT = allT.filter(t => t.exit_price !== null && t.exit_price !== undefined && t.exit_date);
   const today = toDay(new Date());
-  const earliest = toDay(seedStart);
+
+  const snapshotDates = Object.keys(dailySnapshots);
+  const candidateStarts = [
+    ...closedT.map(t => t.exit_date),
+    ...snapshotDates
+  ].filter(Boolean).sort();
+  const earliest = candidateStarts.length ? toDay(candidateStarts[0]) : today;
 
   const days = [];
   const loopEnd = today < earliest ? earliest : today; // safety: never end before we start
@@ -1358,13 +1464,19 @@ function renderEquityCurveChart(closedIgnored) {
     const dayStr = fmt(day);
 
     let realized;
-    if (dayStr <= seedEnd) {
-      // Within the hardcoded seed window — frozen historical snapshot, used as-is.
-      realized = SEED_PNL[dayStr] !== undefined ? SEED_PNL[dayStr] : 0;
+    if (!isToday(day) && dailySnapshots[dayStr]) {
+      // A past day with a LOCKED-IN snapshot from the daily-pnl-snapshot Edge Function —
+      // this is the permanent, correct realized+unrealized total captured at 4PM ET
+      // market close that day. Use it as-is; don't recompute (today's live prices can't
+      // tell us what a past day's unrealized P&L actually was).
+      pnlData.push(parseFloat(Number(dailySnapshots[dayStr].total_pnl).toFixed(2)));
+      labels.push(day.toLocaleDateString('en-US', {month:'short', day:'numeric'}));
+      return; // skip the rest of this iteration — value already pushed
     } else {
-      // Past the seed window — independent of the seed entirely. Realized P&L is the
-      // running total of real closed trades (exit_date >= SEED_CUTOFF) up to this day.
-      // The seed's ending value is NOT carried forward as a baseline.
+      // No snapshot available for this day (e.g. snapshot table just deployed and
+      // hasn't run yet, or this IS today — see below). Falls back to realized-only
+      // running total; unrealized for past days without a snapshot is genuinely
+      // unknowable, so it's correctly omitted rather than guessed.
       realized = 0;
       closedT.forEach(t => {
         if (t.exit_date <= dayStr) realized += pnl(t);
@@ -1553,6 +1665,15 @@ function buildOpenRow(t, i, total, showClose=true) {
             ? (t.entry - parseFloat(t.stop)) * t.qty
             : (parseFloat(t.stop) - t.entry) * t.qty)
         : null);
+  // Cap Risk: how much of the original entry capital is currently exposed, based on
+  // whether live price has moved past entry in your favor (not relative to the stop).
+  // Long:  0 if live >= entry, else (entry - live) * qty
+  // Short: 0 if live <= entry, else (live - entry) * qty
+  // Uses the same live-price-else-entry reference convention as Stop Risk (no stop required).
+  const capPriceRef = livePrice !== null ? livePrice : t.entry;
+  const capRiskVal = t.dir === 'long'
+    ? (capPriceRef >= t.entry ? 0 : (t.entry - capPriceRef) * t.qty)
+    : (capPriceRef <= t.entry ? 0 : (capPriceRef - t.entry) * t.qty);
   const daysHeld = Math.round((new Date() - new Date(t.date)) / 864e5);
 
   let livePriceCell = `<span class="price-loading">loading…</span>`;
@@ -1592,6 +1713,7 @@ function buildOpenRow(t, i, total, showClose=true) {
       <span class="stop-edit-icon">✏</span>
     </span></td>
     <td class="mono ${riskVal?'neg':''}" id="risk-${t.id}">${riskVal?'-$'+riskVal.toFixed(0):'—'}</td>
+    <td class="mono ${capRiskVal?'neg':'pos'}" id="caprisk-${t.id}">${capRiskVal===0?'$0':'-$'+capRiskVal.toFixed(0)}</td>
     <td style="color:#94A3B8;font-size:11px">${t.setup||'—'}</td>
     <td class="mono">${daysHeld}d</td>
     <td style="display:flex;gap:5px;align-items:center;">${showClose?`<button class="btn-action" onclick="openCloseModal('${t.id}')">✅ Close</button><button class="btn-partial" onclick="openPartialModal('${t.id}')">✂️ Trim</button>`:''}<button class="btn-del-sm" onclick="delTrade('${t.id}')">✕</button></td>
@@ -2044,12 +2166,12 @@ async function commitStopEdit(cell, tradeId) {
   cell.innerHTML = `<span class="mono stop-val">${newStop?'$'+newStop.toFixed(2):'—'}</span><span class="stop-edit-icon">✏</span>`;
   cell.onclick = () => startStopEdit(cell, tradeId, newStop);
 
-  // Update risk cell
+  // Update risk cells (Stop Risk + Cap Risk)
   if (t) {
     const riskEl = document.getElementById('risk-' + tradeId);
+    const lp2 = livePrices[t.symbol];
+    const cp2 = (lp2 && lp2.price) ? lp2.price : t.entry;
     if (riskEl) {
-      const lp2 = livePrices[t.symbol];
-      const cp2 = (lp2 && lp2.price) ? lp2.price : t.entry;
       const riskVal = newStop
         ? (t.dir === 'long'
             ? (cp2 - parseFloat(newStop)) * t.qty
@@ -2057,6 +2179,14 @@ async function commitStopEdit(cell, tradeId) {
         : null;
       riskEl.textContent = riskVal !== null ? '-$' + riskVal.toFixed(0) : '—';
       riskEl.className = 'mono ' + (riskVal !== null ? 'neg' : '');
+    }
+    const capRiskEl = document.getElementById('caprisk-' + tradeId);
+    if (capRiskEl) {
+      const capRiskVal = t.dir === 'long'
+        ? (cp2 >= t.entry ? 0 : (t.entry - cp2) * t.qty)
+        : (cp2 <= t.entry ? 0 : (cp2 - t.entry) * t.qty);
+      capRiskEl.textContent = capRiskVal === 0 ? '$0' : '-$' + capRiskVal.toFixed(0);
+      capRiskEl.className = 'mono ' + (capRiskVal ? 'neg' : 'pos');
     }
   }
 
